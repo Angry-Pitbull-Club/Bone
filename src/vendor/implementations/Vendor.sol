@@ -6,8 +6,10 @@ import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Burnable.sol";
 import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
+import "../interfaces/IVendor.sol";
+import "../../staking/interfaces/IERC721StakingWithERC20Burnable.sol";
 
-contract AngryPitbullClubStore is Ownable, ERC1155Burnable, ERC1155Supply {
+contract AngryPitbullClubStore is IVendor, Ownable, ERC1155Burnable, ERC1155Supply {
     using Counters for Counters.Counter;
 
     Counters.Counter private _nextTokenIDCounter;
@@ -25,47 +27,47 @@ contract AngryPitbullClubStore is Ownable, ERC1155Burnable, ERC1155Supply {
     constructor(string memory url_) ERC1155(url_) {}
 
     /**
-     * @notice Allows the owner to enable a token to be accepted as payment in the vendor.
-     */
-    function enableAcceptedToken(address tokenAddress) onlyOwner external {
-        acceptedTokens[tokenAddress] = true;
-    }
-
-    /**
-     * @notice Allows the owner to disable a token to be accepted as payment in the vendor.
-     */
-    function disableAcceptedToken(address tokenAddress) onlyOwner external {
-        acceptedTokens[tokenAddress] = false;
-    }
-
-    /**
      * @notice Buy item.
      */
-    function buyItem(address tokenPaymentAddress, uint256 id, bytes memory data) external returns (bool) {
-       require(acceptedTokens[tokenPaymentAddress], "using unaccepted token");
-       require(vendor[id].purchaseable, "item is not for sale");
+    function buyItem(address tokenPaymentAddress, uint256 id, uint256 amount, bytes memory data) external override {
+        require(acceptedTokens[tokenPaymentAddress], "using unaccepted token");
+        require(vendor[id].purchaseable, "item is not for sale");
+        require(vendor[id].bought + amount < vendor[id].totalSupply, "buying over available stock or sold out");
 
-       _mint(msg.sender, id, 1, data);
+        _mint(msg.sender, id, amount, data);
+        vendor[id].bought += amount;
 
-       IERC20(tokenPaymentAddress).
-       return true;
+        bool success = IERC20(tokenPaymentAddress).transferFrom(msg.sender, address(this), vendor[id].price * amount);
+        if (success) {
+            emit ItemBought(msg.sender, id, amount);
+        }
     }
 
     /**
      * @notice Buy items in batch using the required token.
      */
-    function buyItemsBatch(address tokenPaymentAddress, uint256[] memory ids, uint256[] memory amounts, bytes memory data) external {
-       require(acceptedTokens[tokenPaymentAddress], "using unaccepted token");
+    function buyItemsBatch(address tokenPaymentAddress, uint256[] memory ids, uint256[] memory amounts, bytes memory data) external override {
+        require(acceptedTokens[tokenPaymentAddress], "using unaccepted token");
+
+        uint256 amountOwing;
         for (uint i = 0; i < ids.length; i++) {
             require(vendor[ids[i]].purchaseable, "item is not for sale");
+            require(vendor[ids[i]].bought + amounts[i] < vendor[ids[i]].totalSupply, "buying over available stock or sold out");
+
+            amountOwing += vendor[ids[i]].price * amounts[ids[i]];
         }
         _mintBatch(msg.sender, ids, amounts, data);
+
+        bool success = IERC20(tokenPaymentAddress).transferFrom(msg.sender, address(this), amountOwing);
+        if (success) {
+            emit ItemBoughtBatch(msg.sender, ids, amounts);
+        }
     }
 
     /**
      * @notice Allows the owner to create a new item in the store.
      */
-    function createItem(uint256 price, uint256 totalSupply) external onlyOwner {
+    function createItem(uint256 price, uint256 totalSupply) external override onlyOwner {
         require(totalSupply > 0, "total supply <= 0");
         ItemListing memory newItem;
 
@@ -85,13 +87,30 @@ contract AngryPitbullClubStore is Ownable, ERC1155Burnable, ERC1155Supply {
     }
 
     /**
-     *  @notice Allows the owner to enable the purchasability of an item in the vendor.
+     * @notice Allows the owner to enable the purchasability of an item in the vendor.
      */
     function enableItemPurchaseability(uint256 id) external onlyOwner {
         require(vendor[id].totalSupply != 0, "removing non-existant item");
         vendor[id].purchaseable = true;
     }
 
+    /**
+     * @notice Allows the owner to enable a token to be accepted as payment in the vendor.
+     */
+    function enableAcceptedToken(address tokenAddress) onlyOwner external {
+        acceptedTokens[tokenAddress] = true;
+    }
+
+    /**
+     * @notice Allows the owner to disable a token to be accepted as payment in the vendor.
+     */
+    function disableAcceptedToken(address tokenAddress) onlyOwner external {
+        acceptedTokens[tokenAddress] = false;
+    }
+
+    /**
+     * @notice Allows the owner to change the URI. 
+     */
     function setURI(string memory newuri) public onlyOwner {
         _setURI(newuri);
     }

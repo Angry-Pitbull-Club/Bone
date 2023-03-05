@@ -35,3 +35,6 @@ deployLocal :
 
 anvil:
 	anvil --gas-price
+
+slither:
+	slither --config-file ./slither.config.json . --filter-paths "test|lib"

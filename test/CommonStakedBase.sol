@@ -1,6 +1,5 @@
 pragma solidity 0.8.17;
-import "forge-std/Test.sol";
-import "forge-std/console2.sol";
+
 import "./CommonStakingBase.sol";
 
 /**
@@ -11,6 +10,7 @@ contract CommonStakedBase is CommonStakingBase {
     function _commonSetup() public virtual override {
         super._commonSetup();
         // Airdrop the owner the highest ownership count of the NFT.
+        mockAPC.airdropAngryPitbulls(highestOwnedCount, ownerOfNFT);
         mockAPC.airdropAngryPitbulls(highestOwnedCount, ownerOfNFT);
 
         // Pose as the owner of the NFT.
@@ -30,7 +30,7 @@ contract CommonStakedBase is CommonStakingBase {
             // Assert that the timestamp is correct.
             assertEq(bone.stakedTimestamp(ownerOfNFT, tokenIDs[i]), timestamp);
         }
-
         vm.stopPrank();
+
     }
 }
